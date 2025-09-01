@@ -1,0 +1,1494 @@
+<!DOCTYPE html>
+<html lang="ja">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>台割作成ツール</title>
+    <script src="https://cdn.tailwindcss.com"></script>
+    <style>
+        @import url('https://fonts.googleapis.com/css2?family=Inter:wght@400;600&display=swap');
+        body {
+            font-family: 'Inter', sans-serif;
+            background-color: #f3f4f6;
+            color: #1f2937;
+        }
+        .page-card {
+            width: 100%;
+            padding-top: 141.42%; /* A4の縦横比を維持 (1:1.414) */
+            position: relative;
+            border: 1px solid #d1d5db;
+            transition: all 0.2s;
+            box-shadow: 0 4px 6px -1px rgba(0, 0, 0, 0.1), 0 2px 4px -1px rgba(0, 0, 0, 0.06);
+            cursor: pointer;
+        }
+        .page-card:hover {
+            transform: translateY(-2px);
+            box-shadow: 0 10px 15px -3px rgba(0, 0, 0, 0.1), 0 4px 6px -2px rgba(0, 0, 0, 0.05);
+        }
+        .page-number-base {
+            font-size: 0.875rem;
+            font-weight: bold;
+            color: #4b5563;
+            margin-top: 0.5rem; /* カードの下にスペースを追加 */
+        }
+        .page-title-input {
+            width: 100%;
+            padding: 0.25rem;
+            border: 1px solid #d1d5db;
+            border-radius: 0.375rem;
+            font-size: 0.75rem;
+            text-align: center;
+        }
+        .modal-overlay {
+            position: fixed;
+            top: 0;
+            left: 0;
+            width: 100%;
+            height: 100%;
+            background-color: rgba(0, 0, 0, 0.5);
+            display: none;
+            justify-content: center;
+            align-items: center;
+            z-index: 1000;
+        }
+        .modal-content {
+            background-color: white;
+            padding: 2rem;
+            border-radius: 1rem;
+            width: 90%;
+            max-width: 500px;
+            box-shadow: 0 10px 25px rgba(0, 0, 0, 0.2);
+            display: flex; /* flexboxを適用 */
+            flex-direction: column; /* 子要素を縦に並べる */
+        }
+        /* 広告入力セクションにスクロール可能スタイルを追加 */
+        .ad-inputs-section {
+            max-height: 250px; /* 最大高さを設定 */
+            overflow-y: auto; /* 縦方向のスクロールを有効にする */
+            margin-bottom: 1.5rem; /* ボタンとの間にスペースを追加 */
+            padding-right: 0.5rem; /* スクロールバーのためのスペース */
+        }
+        .message-box {
+            position: fixed;
+            top: 1rem;
+            right: 1rem;
+            background-color: #3b82f6;
+            color: white;
+            padding: 0.75rem 1.5rem;
+            border-radius: 0.5rem;
+            box-shadow: 0 4px 6px rgba(0, 0, 0, 0.1);
+            opacity: 0;
+            transition: opacity 0.3s ease-in-out;
+            z-index: 2000;
+        }
+        .ad-grid-cell {
+            position: relative;
+            /* display: grid; から flexbox に変更してコンテンツを確実に中央配置 */
+            display: flex;
+            flex-direction: column;
+            justify-content: center;
+            align-items: center;
+            font-size: 0.6rem;
+            color: #4b5563;
+            text-align: center;
+            /* セルのサイズ変更を防ぐために、コンテンツのオーバーフローを非表示にします */
+            overflow: hidden;
+        }
+        .ad-grid-cell-text {
+            /* テキストがセル内に収まるように自動的に改行します */
+            overflow-wrap: break-word;
+            word-break: break-all; /* 長い単語でも強制的に改行を追加 */
+        }
+        .dragging {
+            opacity: 0.4;
+        }
+        .drag-over-indicator {
+            border: 2px dashed #3b82f6 !important;
+            transform: scale(1.02);
+            box-shadow: 0 0 15px rgba(59, 130, 246, 0.5);
+        }
+    </style>
+</head>
+<body class="p-6">
+
+    <!-- メインコンテナ -->
+    <div class="max-w-7xl mx-auto bg-white p-6 md:p-10 rounded-3xl shadow-2xl">
+        <h1 class="text-3xl md:text-4xl font-extrabold text-center text-gray-900 mb-8" contenteditable="true">台割作成ツール</h1>
+
+        <!-- ユーザー情報と設定 -->
+        <div class="bg-gray-50 p-6 rounded-2xl mb-8 flex flex-col md:flex-row items-center justify-between shadow-inner">
+            <div class="flex flex-col md:flex-row items-center space-y-4 md:space-y-0 md:space-x-4 w-full md:w-auto">
+                <div class="flex items-center space-x-2">
+                    <label for="pageCountInput" class="text-gray-700 mr-2 text-sm font-medium">本文ページ数:</label>
+                    <input type="number" id="pageCountInput" class="w-24 p-2 border border-gray-300 rounded-lg focus:ring-blue-500 focus:border-blue-500 transition-all" value="176" min="0" step="1">
+                </div>
+                <button id="applyPagesButton" class="bg-blue-600 hover:bg-blue-700 text-white font-bold py-2 px-4 rounded-lg shadow-lg transition-all transform hover:scale-105">
+                    適用
+                </button>
+                <div class="flex items-center space-x-2 mt-4 md:mt-0">
+                    <button id="openEditModalButton" class="bg-gray-600 hover:bg-gray-700 text-white font-bold py-2 px-4 rounded-lg shadow-lg transition-all transform hover:scale-105">
+                        ページを一括編集
+                    </button>
+                    <!-- ページ追加ボタン -->
+                    <button id="openAddPagesModalButton" class="bg-green-600 hover:bg-green-700 text-white font-bold py-2 px-4 rounded-lg shadow-lg transition-all transform hover:scale-105">
+                        ページを追加
+                    </button>
+                    <!-- ページ削除ボタン -->
+                    <button id="openDeletePagesModalButton" class="bg-red-600 hover:bg-red-700 text-white font-bold py-2 px-4 rounded-lg shadow-lg transition-all transform hover:scale-105">
+                        ページを削除
+                    </button>
+                </div>
+            </div>
+            
+            <!-- 保存と読み込みのボタンを追加 -->
+            <div class="flex items-center space-x-2 mt-4 md:mt-0">
+                <button id="saveButton" class="bg-indigo-600 hover:bg-indigo-700 text-white font-bold py-2 px-4 rounded-lg shadow-lg transition-all transform hover:scale-105">
+                    保存
+                </button>
+                <input type="file" id="loadInput" class="hidden" accept=".json">
+                <button id="loadButton" class="bg-indigo-600 hover:bg-indigo-700 text-white font-bold py-2 px-4 rounded-lg shadow-lg transition-all transform hover:scale-105">
+                    読込
+                </button>
+            </div>
+        </div>
+        <p id="errorMessage" class="text-red-500 text-sm text-center hidden mb-4">ページ数は0か4の倍数である必要があります。</p>
+
+        <!-- 台割表示エリア -->
+        <div id="daiwariContainer" class="grid grid-cols-1 md:grid-cols-4 lg:grid-cols-6 gap-x-4 gap-y-12 pb-8">
+            <!-- ローディングメッセージ -->
+            <div id="loadingMessage" class="col-span-full text-center text-gray-500 text-lg mt-8">ステータス: 初期化中...</div>
+            <!-- 台割カードがここに動的に挿入されます -->
+        </div>
+
+    </div>
+    
+    <!-- 編集用モーダル (個別/一括兼用) -->
+    <div id="editModal" class="modal-overlay">
+        <div class="modal-content">
+            <h2 id="modalTitle" class="text-2xl font-bold mb-4">ページを編集</h2>
+            <p id="modalDescription" class="text-gray-600 mb-4">
+                編集したいページ番号をカンマ区切りで入力してください（例: 1-5, 8, 表2）。
+            </p>
+            <input type="text" id="pageInput" class="w-full p-2 mb-4 border border-gray-300 rounded-lg focus:ring-blue-500 focus:border-blue-500 transition-all" placeholder="例: 1-5, 8, 表2">
+            
+            <div class="flex flex-col mb-6">
+                <label for="modalColorPicker" class="text-gray-700 font-medium mb-2">背景色を選ぶ:</label>
+                <input type="color" id="modalColorPicker" class="w-full h-12 cursor-pointer rounded-lg border-2 border-gray-300">
+            </div>
+
+            <div class="flex flex-col mb-6">
+                <label class="text-gray-700 font-medium mb-2">広告枠レイアウトを選ぶ:</label>
+                <!-- レイアウト変更ここから -->
+                <div class="flex flex-wrap gap-4 mb-2">
+                    <label class="flex items-center cursor-pointer">
+                        <input type="radio" name="adLayout" value="1" class="form-radio text-blue-600">
+                        <span class="ml-2 text-gray-700">1頁</span>
+                    </label>
+                    <label class="flex items-center cursor-pointer">
+                        <input type="radio" name="adLayout" value="0.5" class="form-radio text-blue-600">
+                        <span class="ml-2 text-gray-700">1/2頁</span>
+                    </label>
+                    <label class="flex items-center cursor-pointer">
+                        <input type="radio" name="adLayout" value="9" class="form-radio text-blue-600">
+                        <span class="ml-2 text-gray-700">9枠</span>
+                    </label>
+                    <label class="flex items-center cursor-pointer">
+                        <input type="radio" name="adLayout" value="6" class="form-radio text-blue-600">
+                        <span class="ml-2 text-gray-700">6枠</span>
+                    </label>
+                    <label class="flex items-center cursor-pointer">
+                        <input type="radio" name="adLayout" value="3" class="form-radio text-blue-600" checked>
+                        <span class="ml-2 text-gray-700">3枠</span>
+                    </label>
+                </div>
+                <div class="flex flex-wrap gap-4">
+                    <label class="flex items-center cursor-pointer">
+                        <input type="radio" name="adLayout" value="custom-9-grid-left" class="form-radio text-blue-600">
+                        <span class="ml-2 text-gray-700">L字左</span>
+                    </label>
+                    <label class="flex items-center cursor-pointer">
+                        <input type="radio" name="adLayout" value="custom-9-grid-right" class="form-radio text-blue-600">
+                        <span class="ml-2 text-gray-700">L字右</span>
+                    </label>
+                    <label class="flex items-center cursor-pointer">
+                        <input type="radio" name="adLayout" value="medical" class="form-radio text-blue-600">
+                        <span class="ml-2 text-gray-700">医療</span>
+                    </label>
+                    <label class="flex items-center cursor-pointer">
+                        <input type="radio" name="adLayout" value="0" class="form-radio text-blue-600">
+                        <span class="ml-2 text-gray-700">広告枠無し</span>
+                    </label>
+                </div>
+                <!-- レイアウト変更ここまで -->
+            </div>
+            
+            <label class="text-gray-700 font-medium mb-2">広告情報を編集:</label>
+            <!-- 広告情報の編集項目 (動的に表示/非表示を切り替える) -->
+            <div id="adInputsSection" class="flex flex-col space-y-4 hidden ad-inputs-section">
+                <div id="adInputsContainer" class="flex flex-col space-y-2">
+                    <!-- 広告入力欄がここに動的に追加されます -->
+                </div>
+            </div>
+            
+            <p id="modalErrorMessage" class="text-red-500 text-sm hidden mb-4"></p>
+            
+            <div class="flex justify-end space-x-4 mt-auto pt-4">
+                <button id="cancelEditButton" class="bg-gray-200 hover:bg-gray-300 text-gray-800 font-bold py-2 px-4 rounded-lg transition-all">
+                    キャンセル
+                </button>
+                <button id="applyEditButton" class="bg-blue-600 hover:bg-blue-700 text-white font-bold py-2 px-4 rounded-lg transition-all">
+                    適用
+                </button>
+            </div>
+        </div>
+    </div>
+    
+    <!-- ページ追加モーダル -->
+    <div id="addPagesModal" class="modal-overlay">
+        <div class="modal-content">
+            <h2 class="text-2xl font-bold mb-4">ページを追加</h2>
+            <p class="text-gray-600 mb-4">
+                追加するページ数と挿入したいページ番号を入力してください。
+            </p>
+            <div class="flex flex-col space-y-4">
+                <div>
+                    <label for="numPagesToAdd" class="text-gray-700 font-medium mb-2">追加するページ数:</label>
+                    <input type="number" id="numPagesToAdd" class="w-full p-2 border border-gray-300 rounded-lg focus:ring-blue-500 focus:border-blue-500 transition-all" value="1" min="1">
+                </div>
+                <div>
+                    <label for="insertPageNumber" class="text-gray-700 font-medium mb-2">挿入位置（ページ番号）:</label>
+                    <input type="number" id="insertPageNumber" class="w-full p-2 border border-gray-300 rounded-lg focus:ring-blue-500 focus:border-blue-500 transition-all" placeholder="例:10(10ページ目に追加されます)" min="1">
+                    <p class="text-sm text-gray-500 mt-1">※空欄の場合は最終ページの後ろに追加されます。</p>
+                </div>
+            </div>
+            
+            <p id="addModalErrorMessage" class="text-red-500 text-sm hidden mt-4"></p>
+            
+            <div class="flex justify-end space-x-4 mt-auto pt-4">
+                <button id="cancelAddButton" class="bg-gray-200 hover:bg-gray-300 text-gray-800 font-bold py-2 px-4 rounded-lg transition-all">
+                    キャンセル
+                </button>
+                <button id="applyAddButton" class="bg-green-600 hover:bg-green-700 text-white font-bold py-2 px-4 rounded-lg transition-all">
+                    追加
+                </button>
+            </div>
+        </div>
+    </div>
+
+    <!-- ページ削除モーダル -->
+    <div id="deletePagesModal" class="modal-overlay">
+        <div class="modal-content">
+            <h2 class="text-2xl font-bold mb-4">ページを削除</h2>
+            <p class="text-gray-600 mb-4">
+                削除したいページ番号をカンマ区切りで入力してください（例: 5, 8-10）。
+            </p>
+            <div class="flex flex-col space-y-4">
+                <div>
+                    <label for="deletePageNumbers" class="text-gray-700 font-medium mb-2">削除するページ番号:</label>
+                    <input type="text" id="deletePageNumbers" class="w-full p-2 border border-gray-300 rounded-lg focus:ring-red-500 focus:border-red-500 transition-all" placeholder="例: 5, 8-10">
+                </div>
+            </div>
+            
+            <p id="deleteModalErrorMessage" class="text-red-500 text-sm hidden mt-4"></p>
+            
+            <div class="flex justify-end space-x-4 mt-auto pt-4">
+                <button id="cancelDeleteButton" class="bg-gray-200 hover:bg-gray-300 text-gray-800 font-bold py-2 px-4 rounded-lg transition-all">
+                    キャンセル
+                </button>
+                <button id="applyDeleteButton" class="bg-red-600 hover:bg-red-700 text-white font-bold py-2 px-4 rounded-lg transition-all">
+                    削除
+                </button>
+            </div>
+        </div>
+    </div>
+    
+    <!-- 削除確認モーダル -->
+    <div id="confirmationModal" class="modal-overlay">
+        <div class="modal-content">
+            <h2 class="text-2xl font-bold mb-4" id="confirmationTitle"></h2>
+            <p class="text-gray-600 mb-6" id="confirmationMessage"></p>
+            <div class="flex justify-end space-x-4">
+                <button id="confirmCancelButton" class="bg-gray-200 hover:bg-gray-300 text-gray-800 font-bold py-2 px-4 rounded-lg transition-all">
+                    いいえ
+                </button>
+                <button id="confirmOKButton" class="bg-red-600 hover:bg-red-700 text-white font-bold py-2 px-4 rounded-lg transition-all">
+                    はい、削除します
+                </button>
+            </div>
+        </div>
+    </div>
+
+    <!-- 成功メッセージボックス -->
+    <div id="successMessage" class="message-box"></div>
+    
+    <!-- Firebase SDKのインポート -->
+    <script type="module">
+        import { initializeApp } from "https://www.gstatic.com/firebasejs/11.6.1/firebase-app.js";
+        import { getAuth, signInWithCustomToken, signInAnonymously } from "https://www.gstatic.com/firebasejs/11.6.1/firebase-auth.js";
+        import { getFirestore, doc, onSnapshot, setDoc, getDoc } from "https://www.gstatic.com/firebasejs/11.6.1/firebase-firestore.js";
+        
+        // Global variables provided by the Canvas environment
+        const appId = typeof __app_id !== 'undefined' ? __app_id : 'default-app-id';
+        const firebaseConfig = (() => {
+            try {
+                return JSON.parse(typeof __firebase_config !== 'undefined' ? __firebase_config : '{}');
+            } catch (e) {
+                console.error("Failed to parse Firebase config. Using empty object.", e);
+                return {};
+            }
+        })();
+        const initialAuthToken = typeof __initial_auth_token !== 'undefined' ? __initial_auth_token : null;
+
+        let db;
+        let auth;
+        let isFirebaseInitialized = false;
+        let daiwariData = [];
+        let currentPageCount = 0;
+        let saveTimeout;
+        const defaultColor = '#ffffff';
+        let draggedIndex = null;
+
+        // Get UI elements
+        const daiwariContainer = document.getElementById('daiwariContainer');
+        const pageCountInput = document.getElementById('pageCountInput');
+        const applyPagesButton = document.getElementById('applyPagesButton');
+        const openEditModalButton = document.getElementById('openEditModalButton');
+        const openAddPagesModalButton = document.getElementById('openAddPagesModalButton');
+        const openDeletePagesModalButton = document.getElementById('openDeletePagesModalButton'); // 新しいボタン
+        const editModal = document.getElementById('editModal');
+        const modalTitle = document.getElementById('modalTitle');
+        const modalDescription = document.getElementById('modalDescription');
+        const pageInput = document.getElementById('pageInput');
+        const modalColorPicker = document.getElementById('modalColorPicker');
+        const applyEditButton = document.getElementById('applyEditButton');
+        const cancelEditButton = document.getElementById('cancelEditButton');
+        const errorMessageDisplay = document.getElementById('errorMessage');
+        const modalErrorMessage = document.getElementById('modalErrorMessage');
+        const loadingMessage = document.getElementById('loadingMessage');
+        const successMessage = document.getElementById('successMessage');
+        const adInputsSection = document.getElementById('adInputsSection');
+        let adInputsContainer = document.getElementById('adInputsContainer');
+        
+        // Add Pages Modal elements
+        const addPagesModal = document.getElementById('addPagesModal');
+        const numPagesToAddInput = document.getElementById('numPagesToAdd');
+        const insertPageNumberInput = document.getElementById('insertPageNumber');
+        const applyAddButton = document.getElementById('applyAddButton');
+        const cancelAddButton = document.getElementById('cancelAddButton');
+        const addModalErrorMessage = document.getElementById('addModalErrorMessage');
+
+        // Delete Pages Modal elements
+        const deletePagesModal = document.getElementById('deletePagesModal');
+        const deletePageNumbersInput = document.getElementById('deletePageNumbers');
+        const applyDeleteButton = document.getElementById('applyDeleteButton');
+        const cancelDeleteButton = document.getElementById('cancelDeleteButton');
+        const deleteModalErrorMessage = document.getElementById('deleteModalErrorMessage');
+        
+        // Confirmation Modal elements
+        const confirmationModal = document.getElementById('confirmationModal');
+        const confirmationTitle = document.getElementById('confirmationTitle');
+        const confirmationMessage = document.getElementById('confirmationMessage');
+        const confirmOKButton = document.getElementById('confirmOKButton');
+        const confirmCancelButton = document.getElementById('confirmCancelButton');
+
+        // Save and Load elements
+        const saveButton = document.getElementById('saveButton');
+        const loadButton = document.getElementById('loadButton');
+        const loadInput = document.getElementById('loadInput');
+
+
+        // Firebase initialization and authentication
+        const initializeFirebase = async () => {
+            if (Object.keys(firebaseConfig).length === 0) {
+                loadingMessage.textContent = 'ステータス: Firebaseは利用できません。ローカルモードで動作中です。';
+                console.warn("Firebase configuration is missing or invalid. Running in local mode.");
+                isFirebaseInitialized = false;
+                generateDefaultDaiwari(176); // Generate default daiwari for local mode
+                return;
+            }
+
+            try {
+                loadingMessage.textContent = 'ステータス: 初期化中...';
+                const app = initializeApp(firebaseConfig);
+                db = getFirestore(app);
+                auth = getAuth(app);
+                
+                if (initialAuthToken) {
+                    await signInWithCustomToken(auth, initialAuthToken);
+                } else {
+                    await signInAnonymously(auth);
+                }
+                
+                isFirebaseInitialized = true;
+                loadingMessage.textContent = 'ステータス: 認証完了...';
+
+                // 初回データを読み込み、存在しない場合は作成する
+                const daiwariDocRef = doc(db, 'artifacts', appId, 'public', 'data');
+                const docSnap = await getDoc(daiwariDocRef);
+
+                if (docSnap.exists()) {
+                    const data = docSnap.data();
+                    const pageDataString = data.pageData || '[]';
+                    try {
+                        daiwariData = JSON.parse(pageDataString);
+                        currentPageCount = daiwariData.length;
+                        pageCountInput.value = Math.max(0, currentPageCount - 4);
+                        renderDaiwari();
+                        loadingMessage.classList.add('hidden');
+                        console.log("Daiwari data loaded from Firestore.");
+                    } catch (e) {
+                        console.error("Failed to parse Firestore data:", e);
+                        generateDefaultDaiwari(176); // If parsing fails, create a default one.
+                    }
+                } else {
+                    generateDefaultDaiwari(176);
+                    loadingMessage.classList.add('hidden');
+                    console.log("No data found in Firestore. Generating default daiwari.");
+                }
+
+                // その後のリアルタイム更新のためにonSnapshotをセットアップ
+                onSnapshot(daiwariDocRef, (docSnap) => {
+                    if (docSnap.exists()) {
+                        const data = docSnap.data();
+                        const pageDataString = data.pageData || '[]';
+                        try {
+                            const loadedData = JSON.parse(pageDataString);
+                            daiwariData = loadedData;
+                            currentPageCount = daiwariData.length;
+                            pageCountInput.value = Math.max(0, currentPageCount - 4);
+                            renderDaiwari();
+                        } catch (e) {
+                            console.error("Failed to parse Firestore data in snapshot listener:", e);
+                        }
+                    }
+                }, (error) => {
+                    console.error("onSnapshot error:", error);
+                    loadingMessage.textContent = 'ステータス: データの読み込みに失敗しました。コンソールを確認してください。';
+                    loadingMessage.style.color = 'red';
+                });
+
+            } catch (error) {
+                console.error("Firebase initialization or authentication failed:", error);
+                loadingMessage.textContent = 'ステータス: Firebase初期化中にエラーが発生しました。コンソールを確認してください。';
+                loadingMessage.style.color = 'red';
+                isFirebaseInitialized = false;
+                generateDefaultDaiwari(176); // If an error occurs, create a default one.
+            }
+        };
+
+        // Saving daiwari data to Firestore (with debouncing)
+        const saveDaiwari = async () => {
+            if (!isFirebaseInitialized || !db) {
+                console.warn("Firebase is not initialized. Skipping save.");
+                return;
+            }
+
+            console.log("Saving daiwari data...");
+            clearTimeout(saveTimeout);
+            saveTimeout = setTimeout(async () => {
+                const daiwariDocRef = doc(db, 'artifacts', appId, 'public', 'data');
+                try {
+                    await setDoc(daiwariDocRef, { 
+                        pageData: JSON.stringify(daiwariData),
+                        lastUpdated: new Date().toISOString()
+                    });
+                    console.log("Daiwari data saved successfully.");
+                } catch (error) {
+                    console.error("Error saving daiwari data:", error);
+                }
+            }, 500);
+        };
+        
+        // Dynamic generation of daiwari
+        const generateDefaultDaiwari = (bodyPageCount) => {
+            let num = parseInt(bodyPageCount, 10);
+            if (isNaN(num) || num < 0) {
+                errorMessageDisplay.textContent = 'ページ数は0以上の数値を入力してください。';
+                errorMessageDisplay.classList.remove('hidden');
+                return;
+            }
+            
+            errorMessageDisplay.classList.add('hidden');
+            const totalPages = num + 4;
+            currentPageCount = totalPages;
+            daiwariData = Array.from({ length: totalPages }, (_, i) => {
+                let pageLabel = (i > 1 && i < totalPages - 2) ? i - 1 : 0;
+                let adLayout = '3'; // デフォルトは3枠
+                let adInfo = [];
+
+                if (i === 0) { // 表1
+                    pageLabel = '表1';
+                    adLayout = '0'; // 広告枠無し
+                } else if (i === 1) { // 表2
+                    pageLabel = '表2';
+                    adLayout = '0.5'; // 1/2頁
+                } else if (i === totalPages - 2) { // 表3
+                    pageLabel = '表3';
+                    adLayout = '0.5'; // 1/2頁
+                } else if (i === totalPages - 1) { // 表4
+                    pageLabel = '表4';
+                    adLayout = '1'; // 1頁
+                }
+
+                return {
+                    page: pageLabel,
+                    title: '',
+                    color: defaultColor,
+                    adLayout: adLayout,
+                    adInfo: adInfo
+                };
+            });
+
+            const adLayoutMap = {
+                1: '0',
+                2: 'custom-9-grid-left',
+                3: 'custom-9-grid-right',
+                4: 'custom-9-grid-left',
+                5: 'custom-9-grid-right',
+                46: 'custom-9-grid-left',
+                47: 'custom-9-grid-right',
+                64: '9',
+                67: '9',
+                137: '9',
+                145: '9',
+                139: '6',
+                141: '6',
+                142: '6',
+                143: '6',
+            };
+            
+            for (let i = 80; i <= 85; i++) {
+                adLayoutMap[i] = 'medical';
+            }
+            for (let i = 146; i <= 165; i++) {
+                adLayoutMap[i] = 'medical';
+            }
+
+            for (const [pageNumberStr, layout] of Object.entries(adLayoutMap)) {
+                const pageNumber = parseInt(pageNumberStr, 10);
+                const index = pageNumber + 1;
+                if (index >= 2 && index < daiwariData.length) {
+                    daiwariData[index].adLayout = layout;
+                }
+            }
+            
+            saveDaiwari();
+            renderDaiwari();
+        };
+
+        // Rendering daiwari to UI
+        const renderDaiwari = () => {
+            daiwariContainer.innerHTML = '';
+
+            daiwariData.forEach((page, index) => {
+                const pageWrapper = createPageWrapper(page, index);
+                daiwariContainer.appendChild(pageWrapper);
+            });
+
+            const blankSpace = document.createElement('div');
+            blankSpace.className = 'w-full md:w-1/2 lg:w-1/3 invisible hidden md:block';
+            daiwariContainer.insertBefore(blankSpace, daiwariContainer.children[0]);
+            
+            setupDynamicEventListeners();
+        };
+
+        const createPageWrapper = (page, index) => {
+            const pageWrapper = document.createElement('div');
+            pageWrapper.className = "page-wrapper flex flex-col items-center";
+            pageWrapper.dataset.pageIndex = index;
+
+            // Make body pages (not covers) draggable
+            if (index >= 2 && index < daiwariData.length - 2) {
+                pageWrapper.draggable = true;
+            }
+
+            pageWrapper.addEventListener('click', (e) => {
+                // タイトル入力欄をクリックした場合はモーダルを開かない
+                if (e.target.classList.contains('page-title-input')) {
+                    return;
+                }
+                pageInput.value = typeof page.page === 'number' ? page.page : page.page;
+                modalTitle.textContent = `ページを編集 - ${typeof page.page === 'number' ? page.page + 'P' : page.page}`;
+                modalDescription.textContent = '背景色、広告枠レイアウト、広告情報を編集してください。';
+                
+                modalColorPicker.value = page.color;
+                
+                const adLayoutRadio = document.querySelector(`input[name="adLayout"][value="${page.adLayout}"]`);
+                if (adLayoutRadio) {
+                    adLayoutRadio.checked = true;
+                }
+                
+                updateAdInputs(page.adLayout, page.adInfo);
+                editModal.style.display = 'flex';
+                modalErrorMessage.classList.add('hidden');
+            });
+
+            let pageLabel = '';
+            
+            if (page.page === '表1' || page.page === '表2' || page.page === '表3' || page.page === '表4') {
+                pageLabel = page.page;
+            } else {
+                pageLabel = `${page.page}P`;
+            }
+
+            const inputElement = document.createElement('input');
+            inputElement.type = 'text';
+            inputElement.className = 'page-title-input mb-2';
+            inputElement.placeholder = 'ページタイトル';
+            inputElement.value = page.title || '';
+            inputElement.dataset.pageIndex = index;
+            pageWrapper.appendChild(inputElement);
+
+            const cardElement = document.createElement('div');
+            cardElement.className = 'page-card w-full rounded-lg';
+            cardElement.style.backgroundColor = page.color;
+            cardElement.dataset.pageIndex = index;
+
+            // 広告枠のレンダリングロジック
+            const adLayout = page.adLayout;
+            const adGridContainer = document.createElement('div');
+            
+            const gridDimensions = getGridDimensions(adLayout);
+            const mergedAdCells = calculateMergedAdLayout(page.adInfo, adLayout);
+
+            let containerClasses = 'absolute bottom-0 w-full p-1 ';
+            let gridStyles = `display: grid; grid-template-columns: repeat(${gridDimensions.cols}, 1fr); grid-template-rows: repeat(${gridDimensions.rows}, 1fr); gap: 4px;`;
+
+            switch (adLayout) {
+                case '1': containerClasses += 'h-full'; break;
+                case '0.5': containerClasses += 'h-full'; break;
+                case '9': containerClasses += 'h-full'; break;
+                case '6': containerClasses += 'h-2/3'; break;
+                case '3': containerClasses += 'h-1/3'; break;
+                case 'custom-9-grid-left':
+                case 'custom-9-grid-right':
+                case 'medical':
+                    containerClasses += 'h-full'; break;
+                case '0': containerClasses += 'h-full'; break;
+            }
+
+            adGridContainer.className = containerClasses;
+            adGridContainer.style = gridStyles;
+
+mergedAdCells.forEach(cell => {
+    const adGridCell = document.createElement('div');
+    const companyFilled = cell.adInfo.company && cell.adInfo.company.trim() !== '';
+    
+    /* 枠線のスタイルを調整 - 蛍光ピンクで太い線に変更 */
+    const borderStyle = companyFilled ? 'border-solid border-4 border-pink-500' : 'border border-dashed border-gray-400';
+    const idDisplay = cell.adInfo.id ? `No.${cell.adInfo.id}` : '';
+
+    /* classNameから汎用の'border'を削除し、borderStyle変数で制御 */
+    adGridCell.className = `ad-grid-cell rounded-sm ${borderStyle}`;
+    adGridCell.style.gridColumn = `${cell.colStart} / ${cell.colEnd}`;
+    adGridCell.style.gridRow = `${cell.rowStart} / ${cell.rowEnd}`;
+    adGridCell.style.backgroundColor = '#ffffff'; // 広告枠は常に白背景
+    
+    adGridCell.innerHTML = `
+        <span class="ad-grid-cell-text">${idDisplay}</span>
+        <span class="ad-grid-cell-text">${cell.adInfo.company || ''}</span>
+    `;
+    adGridContainer.appendChild(adGridCell);
+});
+
+
+
+
+            cardElement.appendChild(adGridContainer);
+
+            pageWrapper.appendChild(cardElement);
+
+            const pageNumberElement = document.createElement('div');
+            pageNumberElement.className = 'page-number-base w-full flex';
+            
+            if (typeof page.page === 'number') {
+                if (page.page % 2 !== 0) { // 奇数ページ
+                    pageNumberElement.classList.add('justify-end');
+                } else { // 偶数ページ
+                    pageNumberElement.classList.add('justify-start');
+                }
+            } else {
+                // 表1-4は中央揃え
+                pageNumberElement.classList.add('justify-center');
+            }
+            
+            pageNumberElement.textContent = pageLabel;
+            pageWrapper.appendChild(pageNumberElement);
+            
+            return pageWrapper; // Return the created element
+        }; // Closing brace for createPageWrapper
+        
+        // Function to get grid dimensions based on layout
+        const getGridDimensions = (adLayout) => {
+            const dims = { cols: 3, rows: 1 }; // Default
+            switch (adLayout) {
+                case '1': dims.cols = 1; dims.rows = 1; break;
+                case '0.5': dims.cols = 1; dims.rows = 2; break;
+                case '9': dims.cols = 3; dims.rows = 3; break;
+                case '6': dims.cols = 3; dims.rows = 2; break;
+                case '3': dims.cols = 3; dims.rows = 1; break;
+                case 'custom-9-grid-left':
+                case 'custom-9-grid-right':
+                    dims.cols = 3; dims.rows = 3; break;
+                case 'medical': dims.cols = 3; dims.rows = 5; break;
+                case '0': dims.cols = 1; dims.rows = 1; break;
+            }
+            return dims;
+        };
+
+        // Function to calculate merged ad cells for rendering
+        const calculateMergedAdLayout = (adInfo, adLayout) => {
+            if (adLayout === '0' || !adInfo) {
+                return [];
+            }
+
+            const dims = getGridDimensions(adLayout);
+            const cols = dims.cols;
+            const rows = dims.rows;
+
+            const grid = Array.from({ length: rows }, () => Array(cols).fill(null));
+            const adInfoMap = new Map();
+            adInfo.forEach(info => {
+                if (!info.isHidden && ((info.id && info.id.trim() !== '') || (info.company && info.company.trim() !== ''))) {
+                    adInfoMap.set(info.gridIndex, info);
+                }
+            });
+
+            const validIndices = new Set(adInfo.map(info => info.gridIndex));
+            if (adLayout === 'custom-9-grid-left') {
+                [0, 3, 6, 7, 8].forEach(i => validIndices.add(i));
+            } else if (adLayout === 'custom-9-grid-right') {
+                [2, 5, 6, 7, 8].forEach(i => validIndices.add(i));
+            }
+
+            const visited = Array.from({ length: rows }, () => Array(cols).fill(false));
+            const mergedCells = [];
+
+            for (let r = 0; r < rows; r++) {
+                for (let c = 0; c < cols; c++) {
+                    if (visited[r][c]) continue;
+                    
+                    const index = r * cols + c;
+                    const currentAdInfoForIndex = adInfo.find(item => item.gridIndex === index);
+
+                    // *** MODIFIED LINE ***
+                    // Non-visible ad slots are skipped regardless of layout type.
+                    if (currentAdInfoForIndex && currentAdInfoForIndex.isHidden) {
+                        visited[r][c] = true;
+                        continue; 
+                    }
+
+                    const currentAd = adInfoMap.has(index) ? adInfoMap.get(index) : null;
+                    
+                    if (!currentAd) {
+                         if (adLayout.startsWith('custom-9-grid') && !validIndices.has(index)) {
+                           // This is an intentionally blank cell in L-shape, skip it
+                         } else {
+                           mergedCells.push({
+                                colStart: c + 1, colEnd: c + 2,
+                                rowStart: r + 1, rowEnd: r + 2,
+                                adInfo: { id: '', company: '' }
+                           });
+                         }
+                        visited[r][c] = true;
+                        continue;
+                    }
+
+                    const group = [];
+                    const queue = [[r, c]];
+                    visited[r][c] = true;
+
+                    while (queue.length > 0) {
+                        const [row, col] = queue.shift();
+                        group.push([row, col]);
+
+                        const directions = [[-1, 0], [1, 0], [0, -1], [0, 1]];
+                        for (const [dr, dc] of directions) {
+                            const newR = row + dr;
+                            const newC = col + dc;
+
+                            if (newR >= 0 && newR < rows && newC >= 0 && newC < cols && !visited[newR][newC]) {
+                                const neighborAd = adInfoMap.has(newR * cols + newC) ? adInfoMap.get(newR * cols + newC) : null;
+                                if (neighborAd && neighborAd.id === currentAd.id && neighborAd.company === currentAd.company) {
+                                    visited[newR][newC] = true;
+                                    queue.push([newR, newC]);
+                                }
+                            }
+                        }
+                    }
+
+                    let minRow = Infinity, maxRow = -Infinity, minCol = Infinity, maxCol = -Infinity;
+                    group.forEach(([row, col]) => {
+                        minRow = Math.min(minRow, row);
+                        maxRow = Math.max(maxRow, row);
+                        minCol = Math.min(minCol, col);
+                        maxCol = Math.max(maxCol, col);
+                    });
+
+                    mergedCells.push({
+                        colStart: minCol + 1,
+                        colEnd: maxCol + 2,
+                        rowStart: minRow + 1,
+                        rowEnd: maxRow + 2,
+                        adInfo: currentAd
+                    });
+                }
+            }
+            return mergedCells;
+        };
+        
+        // 広告情報入力フィールドの動的生成
+        const updateAdInputs = (adLayout, adInfo) => {
+            adInputsContainer.innerHTML = '';
+            
+            const newAdInputsContainer = adInputsContainer.cloneNode(false);
+            adInputsContainer.parentNode.replaceChild(newAdInputsContainer, adInputsContainer);
+            adInputsContainer = newAdInputsContainer;
+
+            const numAds = {
+                '1': 1, '0.5': 2, '9': 9, '6': 6, '3': 3,
+                'custom-9-grid-left': 5, 'custom-9-grid-right': 5, 'medical': 15, '0': 0
+            }[adLayout];
+            
+            if (numAds > 0) {
+                adInputsSection.classList.remove('hidden');
+                
+                const getLabel = (index, layout, currentAdInfo = []) => {
+                    if (layout === 'medical') {
+                        let visibleCounter = 0;
+                        for (let i = 0; i <= index; i++) {
+                            const info = currentAdInfo.find(item => item.gridIndex === i);
+                            if (!info || !info.isHidden) {
+                                visibleCounter++;
+                            }
+                        }
+                        return `医療枠 ${visibleCounter}`;
+                    }
+
+                    const positions = ['左', '中', '右'];
+                    const rows = { '9': ['上段', '中段', '下段'], '6': ['中段', '下段'], '3': [''] }[layout] || [];
+                    const row = Math.floor(index / 3);
+                    const col = index % 3;
+                    if (layout === '3') {
+                      return positions[index];
+                    }
+                    if (rows[row] && positions[col]) {
+                        return `${rows[row]}${positions[col]}`;
+                    }
+                    if (layout === '1') return '全面';
+                    if (layout === '0.5') return index === 0 ? '上段' : '下段';
+                    
+                    if (layout.startsWith('custom-9-grid')) {
+                        const labelMap = layout === 'custom-9-grid-left' 
+                            ? ['上段左', '中段左', '下段左', '下段中', '下段右']
+                            : ['上段右', '中段右', '下段左', '下段中', '下段右'];
+                        const mapIndices = layout === 'custom-9-grid-left' ? [0, 3, 6, 7, 8] : [2, 5, 6, 7, 8];
+                        const mappedIndex = mapIndices.indexOf(index);
+                        return mappedIndex !== -1 ? labelMap[mappedIndex] : `枠 ${index + 1}`;
+                    }
+                    return `枠 ${index + 1}`;
+                };
+                
+                const gridIndexMap = {
+                    '1': [0], '0.5': [0, 1], '9': Array.from({length: 9}, (v, k) => k), '6': Array.from({length: 6}, (v, k) => k), '3': Array.from({length: 3}, (v, k) => k),
+                    'custom-9-grid-left': [0, 3, 6, 7, 8], 'custom-9-grid-right': [2, 5, 6, 7, 8], 'medical': Array.from({length: 15}, (v, k) => k)
+                };
+                const indices = gridIndexMap[adLayout] || [];
+
+                indices.forEach(gridIndex => {
+                    const existingInfo = adInfo.find(item => item.gridIndex === gridIndex) || { id: '', company: '', isHidden: false };
+                    
+                    const labelText = getLabel(gridIndex, adLayout, adInfo);
+                    
+                    const inputGroup = document.createElement('div');
+                    inputGroup.className = 'flex items-center space-x-2';
+                    
+                    let hideCheckboxHTML = '';
+                    const layoutsWithHideCheckbox = ['0.5', '9', '6', '3', 'custom-9-grid-left', 'custom-9-grid-right', 'medical'];
+                    if (layoutsWithHideCheckbox.includes(adLayout)) {
+                        hideCheckboxHTML = `
+                            <input type="checkbox" class="ad-hide-checkbox form-checkbox text-red-600 h-4 w-4 rounded cursor-pointer" data-grid-index="${gridIndex}" ${existingInfo.isHidden ? 'checked' : ''}>
+                            <label class="text-xs text-gray-500">非表示</label>
+                        `;
+                    }
+
+                    inputGroup.innerHTML = `
+                        <label class="text-xs text-gray-500 w-20 shrink-0">${labelText}</label>
+                        <div class="flex space-x-2 flex-grow">
+                            <input type="text" class="ad-id-input w-1/3 p-1 border border-gray-300 rounded-lg text-xs" placeholder="管理番号" value="${existingInfo.id}" data-grid-index="${gridIndex}">
+                            <input type="text" class="ad-company-input w-2/3 p-1 border border-gray-300 rounded-lg text-xs" placeholder="会社名" value="${existingInfo.company}" data-grid-index="${gridIndex}">
+                        </div>
+                        ${hideCheckboxHTML}
+                    `;
+                    adInputsContainer.appendChild(inputGroup);
+                });
+
+                const layoutsWithHideCheckbox = ['0.5', '9', '6', '3', 'custom-9-grid-left', 'custom-9-grid-right', 'medical'];
+                if (layoutsWithHideCheckbox.includes(adLayout)) {
+                    adInputsContainer.addEventListener('change', (e) => {
+                        if (e.target.classList.contains('ad-hide-checkbox')) {
+                            const currentAdInfo = [];
+                            document.querySelectorAll('#adInputsContainer > div').forEach(group => {
+                                const idInput = group.querySelector('.ad-id-input');
+                                const companyInput = group.querySelector('.ad-company-input');
+                                const hideCheckbox = group.querySelector('.ad-hide-checkbox');
+                                const gridIndex = parseInt(idInput.dataset.gridIndex, 10);
+                                currentAdInfo.push({
+                                    gridIndex: gridIndex,
+                                    id: idInput.value,
+                                    company: companyInput.value,
+                                    isHidden: hideCheckbox ? hideCheckbox.checked : false
+                                });
+                            });
+                            updateAdInputs(adLayout, currentAdInfo);
+                        }
+                    });
+                }
+
+            } else {
+                adInputsSection.classList.add('hidden');
+            }
+        };
+
+        // Parse user's page number input
+        const parsePageNumbers = (input) => {
+            const pageNumbers = new Set();
+            const ranges = input.split(/[,，]/);
+            const totalPages = daiwariData.length;
+
+            for (const range of ranges) {
+                const trimmedRange = range.trim();
+                if (!trimmedRange) continue;
+
+                if (trimmedRange.includes('-') || trimmedRange.includes('ー')) {
+                    // Range specified (e.g., 1-5)
+                    const parts = trimmedRange.split(/[-ー]/).map(p => p.trim());
+                    const start = parseInt(parts[0], 10);
+                    const end = parseInt(parts[1], 10);
+
+                    if (isNaN(start) || isNaN(end) || start > end) {
+                        return null; // Invalid range
+                    }
+
+                    for (let i = start; i <= end; i++) {
+                        const index = i + 1;
+                        if (index >= 2 && index < totalPages - 2) {
+                             pageNumbers.add(index);
+                        }
+                    }
+                } else {
+                    // Single page specified (e.g., 8, 表2)
+                    if (trimmedRange === '表1') {
+                        pageNumbers.add(0);
+                    } else if (trimmedRange === '表2') {
+                        pageNumbers.add(1);
+                    } else if (trimmedRange === '表3') {
+                        pageNumbers.add(totalPages - 2);
+                    } else if (trimmedRange === '表4') {
+                        pageNumbers.add(totalPages - 1);
+                    } else {
+                        const pageNum = parseInt(trimmedRange, 10);
+                        const index = pageNum + 1;
+                        if (!isNaN(pageNum) && index >= 2 && index < totalPages - 2) {
+                            pageNumbers.add(index);
+                        } else {
+                            return null; // Invalid page number
+                        }
+                    }
+                }
+            }
+            return Array.from(pageNumbers);
+        };
+        
+        // Function to apply fill color and layout changes
+        const applyChanges = () => {
+            const pageText = pageInput.value;
+            const fillColor = modalColorPicker.value;
+            const selectedLayout = document.querySelector('input[name="adLayout"]:checked').value;
+            modalErrorMessage.classList.add('hidden');
+
+            const pageIndexesToEdit = parsePageNumbers(pageText);
+            
+            if (pageIndexesToEdit === null || pageIndexesToEdit.length === 0) {
+                modalErrorMessage.textContent = '有効なページ番号を入力してください。';
+                modalErrorMessage.classList.remove('hidden');
+                return;
+            }
+
+            const isBulkEdit = pageIndexesToEdit.length > 1;
+
+            if (isBulkEdit) {
+                // 一括編集モード
+                pageIndexesToEdit.forEach(index => {
+                    if (daiwariData[index]) {
+                        daiwariData[index].color = fillColor;
+                        daiwariData[index].adLayout = selectedLayout;
+                        daiwariData[index].adInfo = [];
+                    }
+                });
+            } else {
+                // 個別編集モード
+                const index = pageIndexesToEdit[0];
+                if (daiwariData[index]) {
+                    daiwariData[index].color = fillColor;
+                    daiwariData[index].adLayout = selectedLayout;
+                    
+                    const adInfo = [];
+                    document.querySelectorAll('#adInputsContainer > div').forEach(group => {
+                        const idInput = group.querySelector('.ad-id-input');
+                        const companyInput = group.querySelector('.ad-company-input');
+                        const hideCheckbox = group.querySelector('.ad-hide-checkbox');
+                        const gridIndex = parseInt(idInput.dataset.gridIndex, 10);
+                        adInfo.push({
+                            gridIndex: gridIndex,
+                            id: idInput.value,
+                            company: companyInput.value,
+                            isHidden: hideCheckbox ? hideCheckbox.checked : false
+                        });
+                    });
+                    daiwariData[index].adInfo = adInfo;
+                }
+            }
+
+            // Immediately re-render the UI
+            renderDaiwari();
+
+            // Display a success message
+            const pageNames = pageIndexesToEdit.map(index => {
+                const page = daiwariData[index].page;
+                if (typeof page === 'number') {
+                    return `${page}P`;
+                }
+                return page;
+            }).join(', ');
+            
+            successMessage.textContent = `以下のページのレイアウトと色を更新しました: ${pageNames}`;
+            successMessage.style.opacity = '1';
+            setTimeout(() => {
+                successMessage.style.opacity = '0';
+            }, 3000);
+
+            // Save to Firestore
+            saveDaiwari();
+
+            // Close the modal after applying changes
+            editModal.style.display = 'none';
+        };
+        
+        // Function to add new pages
+        const addPages = () => {
+            const numToAdd = parseInt(numPagesToAddInput.value, 10);
+            const insertPageNumber = parseInt(insertPageNumberInput.value, 10);
+            addModalErrorMessage.classList.add('hidden');
+
+            if (isNaN(numToAdd) || numToAdd < 1) {
+                addModalErrorMessage.textContent = '追加するページ数は1以上の数値を入力してください。';
+                addModalErrorMessage.classList.remove('hidden');
+                return;
+            }
+
+            const totalPages = daiwariData.length;
+            let insertIndex = totalPages - 2; // Default to before 表3
+
+            if (!isNaN(insertPageNumber) && insertPageNumber >= 1 && insertPageNumber <= totalPages - 4) {
+                insertIndex = insertPageNumber + 1;
+            } else if (!isNaN(insertPageNumber)) {
+                addModalErrorMessage.textContent = `挿入位置は1から${totalPages - 4}の本文ページ番号を入力してください。`;
+                addModalErrorMessage.classList.remove('hidden');
+                return;
+            }
+            
+            // 新しいページデータの生成
+            const newPages = Array.from({ length: numToAdd }, (_, i) => {
+                return {
+                    page: 0, // 仮のページ番号
+                    title: '',
+                    color: defaultColor,
+                    adLayout: '3',
+                    adInfo: []
+                };
+            });
+
+            // ページデータの挿入
+            daiwariData.splice(insertIndex, 0, ...newPages);
+            
+            // ページ番号を再割り当て
+            daiwariData.forEach((page, index) => {
+                if (index >= 2 && index < daiwariData.length - 2) {
+                    page.page = index - 1;
+                }
+            });
+
+            currentPageCount = daiwariData.length;
+            pageCountInput.value = Math.max(0, daiwariData.length - 4);
+            
+            saveDaiwari();
+            renderDaiwari();
+            
+            successMessage.textContent = `${numToAdd}ページを追加しました。`;
+            successMessage.style.opacity = '1';
+            setTimeout(() => {
+                successMessage.style.opacity = '0';
+            }, 3000);
+            
+            addPagesModal.style.display = 'none';
+        };
+
+        // Function to perform the actual deletion
+        const deletePages = (pagesToDeleteIndexes) => {
+            const pagesToDeleteNumbers = pagesToDeleteIndexes.map(index => daiwariData[index].page);
+
+            // ソートされたインデックスを降順で削除
+            pagesToDeleteIndexes.sort((a, b) => b - a).forEach(index => {
+                daiwariData.splice(index, 1);
+            });
+            
+            // ページ番号を再割り当て
+            daiwariData.forEach((page, index) => {
+                if (index >= 2 && index < daiwariData.length - 2) {
+                    page.page = index - 1;
+                }
+            });
+
+            currentPageCount = daiwariData.length;
+            pageCountInput.value = Math.max(0, daiwariData.length - 4);
+            
+            saveDaiwari();
+            renderDaiwari();
+
+            successMessage.textContent = `ページ ${pagesToDeleteNumbers.join(', ')} を削除しました。`;
+            successMessage.style.opacity = '1';
+            setTimeout(() => {
+                successMessage.style.opacity = '0';
+            }, 3000);
+            
+            deletePagesModal.style.display = 'none';
+        };
+        
+        // New function for confirmation before deletion
+        const confirmAndDeletePages = () => {
+            const pagesToDeleteText = deletePageNumbersInput.value;
+            deleteModalErrorMessage.classList.add('hidden');
+            
+            const pagesToDeleteIndexes = parsePageNumbers(pagesToDeleteText);
+            
+            if (pagesToDeleteIndexes === null || pagesToDeleteIndexes.length === 0) {
+                deleteModalErrorMessage.textContent = '有効なページ番号を入力してください。';
+                deleteModalErrorMessage.classList.remove('hidden');
+                return;
+            }
+
+            // Check if any of the pages to be deleted contain any input info
+            const hasInputInfo = pagesToDeleteIndexes.some(index => {
+                const page = daiwariData[index];
+                const hasTitle = page.title && page.title.trim() !== '';
+                const hasAdInfo = page.adInfo && page.adInfo.some(ad => (ad.id && ad.id.trim() !== '') || (ad.company && ad.company.trim() !== ''));
+                return hasTitle || hasAdInfo;
+            });
+
+            if (hasInputInfo) {
+                // If any input info exists, show confirmation modal
+                confirmationTitle.textContent = '警告';
+                confirmationMessage.textContent = '入力情報が失われます。削除しますか？';
+                confirmationModal.style.display = 'flex';
+                
+                // Use promises to handle user choice
+                new Promise((resolve) => {
+                    const handleOK = () => {
+                        confirmationModal.style.display = 'none';
+                        resolve(true);
+                        confirmOKButton.removeEventListener('click', handleOK);
+                        confirmCancelButton.removeEventListener('click', handleCancel);
+                    };
+                    const handleCancel = () => {
+                        confirmationModal.style.display = 'none';
+                        resolve(false);
+                        confirmOKButton.removeEventListener('click', handleOK);
+                        confirmCancelButton.removeEventListener('click', handleCancel);
+                    };
+                    confirmOKButton.addEventListener('click', handleOK);
+                    confirmCancelButton.addEventListener('click', handleCancel);
+                }).then(isConfirmed => {
+                    if (isConfirmed) {
+                        deletePages(pagesToDeleteIndexes);
+                    } else {
+                        console.log("Deletion cancelled by user.");
+                    }
+                });
+            } else {
+                // If no input info, proceed directly
+                deletePages(pagesToDeleteIndexes);
+            }
+        };
+
+ // Function to save the current state as a JSON file
+const saveCurrentState = () => {
+    // Get the main title
+    const titleElement = document.querySelector('h1[contenteditable="true"]');
+    const mainTitle = titleElement ? titleElement.textContent.trim() : '台割作成ツール';
+    
+    const dataToSave = {
+        mainTitle: mainTitle,  // メインタイトルを追加
+        pageCount: Math.max(0, daiwariData.length - 4),
+        pages: daiwariData.map(page => ({
+            page: page.page,
+            title: page.title || '',  // ページタイトルを明示的に含める
+            color: page.color,
+            adLayout: page.adLayout,
+            adInfo: page.adInfo.map(ad => ({  // 広告情報の詳細を保持
+                gridIndex: ad.gridIndex,
+                id: ad.id || '',
+                company: ad.company || '',
+                isHidden: ad.isHidden || false  // 表示・非表示情報を明示的に含める
+            }))
+        }))
+    };
+    
+    const jsonString = JSON.stringify(dataToSave, null, 2);
+    const blob = new Blob([jsonString], { type: 'application/json' });
+    const url = URL.createObjectURL(blob);
+    const a = document.createElement('a');
+
+    // ファイル名にメインタイトルを使用 - nowを定義
+    const now = new Date(); // ← この行が不足していました
+    const date = `${now.getFullYear()}${(now.getMonth() + 1).toString().padStart(2, '0')}${now.getDate().toString().padStart(2, '0')}`;
+    const time = `${now.getHours().toString().padStart(2, '0')}${now.getMinutes().toString().padStart(2, '0')}`;
+    const filename = `${mainTitle.replace(/\s+/g, '_')}-${date}-${time}.json`;
+
+    a.href = url;
+    a.download = filename;
+    document.body.appendChild(a);
+    a.click();
+    document.body.removeChild(a);
+    URL.revokeObjectURL(url);
+    
+    successMessage.textContent = '台割データを保存しました（タイトル・ページタイトル・広告表示設定含む）。';
+    successMessage.style.opacity = '1';
+    setTimeout(() => {
+        successMessage.style.opacity = '0';
+    }, 3000);
+};
+
+
+
+// Function to load a state from a JSON file
+const loadStateFromFile = (file) => {
+    const reader = new FileReader();
+    reader.onload = (e) => {
+        try {
+            const loadedData = JSON.parse(e.target.result);
+            if (loadedData.pages && Array.isArray(loadedData.pages)) {
+                // メインタイトルを復元
+                if (loadedData.mainTitle) {
+                    const titleElement = document.querySelector('h1[contenteditable="true"]');
+                    if (titleElement) {
+                        titleElement.textContent = loadedData.mainTitle;
+                    }
+                }
+                
+                // ページデータを復元（ページタイトルと広告表示設定を含む）
+                daiwariData = loadedData.pages.map(page => ({
+                    page: page.page,
+                    title: page.title || '',  // ページタイトルを復元
+                    color: page.color,
+                    adLayout: page.adLayout,
+                    adInfo: (page.adInfo || []).map(ad => ({
+                        gridIndex: ad.gridIndex,
+                        id: ad.id || '',
+                        company: ad.company || '',
+                        isHidden: ad.isHidden || false  // 表示・非表示情報を復元
+                    }))
+                }));
+                
+                currentPageCount = daiwariData.length;
+                pageCountInput.value = Math.max(0, currentPageCount - 4);
+                renderDaiwari();
+                saveDaiwari(); // Save loaded data to Firestore
+                successMessage.textContent = '台割データを読み込みました（タイトル・ページタイトル・広告表示設定含む）。';
+                successMessage.style.opacity = '1';
+                setTimeout(() => {
+                    successMessage.style.opacity = '0';
+                }, 3000);
+            } else {
+                throw new Error('Invalid file format.');
+            }
+        } catch (error) {
+            alert('エラー: 無効なファイル形式です。');
+            console.error('File parsing error:', error);
+        }
+    };
+    reader.readAsText(file);
+};
+
+
+
+        // Setting up static event listeners (attached once)
+        const setupStaticEventListeners = () => {
+            applyPagesButton.addEventListener('click', () => {
+                const pageCount = pageCountInput.value;
+                generateDefaultDaiwari(pageCount);
+            });
+            
+            openAddPagesModalButton.addEventListener('click', () => {
+                addPagesModal.style.display = 'flex';
+                numPagesToAddInput.value = 1;
+                insertPageNumberInput.value = '';
+                addModalErrorMessage.classList.add('hidden');
+            });
+            
+            applyAddButton.addEventListener('click', addPages);
+            cancelAddButton.addEventListener('click', () => {
+                addPagesModal.style.display = 'none';
+            });
+            
+            // 新しい削除ボタンのイベントリスナー
+            openDeletePagesModalButton.addEventListener('click', () => {
+                deletePagesModal.style.display = 'flex';
+                deletePageNumbersInput.value = '';
+                deleteModalErrorMessage.classList.add('hidden');
+            });
+            applyDeleteButton.addEventListener('click', confirmAndDeletePages);
+            cancelDeleteButton.addEventListener('click', () => {
+                deletePagesModal.style.display = 'none';
+            });
+
+            // 一括編集ボタンのイベントリスナー
+            openEditModalButton.addEventListener('click', () => {
+                modalTitle.textContent = 'ページを一括編集';
+                modalDescription.textContent = '編集したいページ番号をカンマ区切りで入力してください（例: 1-5, 8, 表2）。';
+                pageInput.value = '';
+                modalColorPicker.value = defaultColor;
+                document.querySelector('input[name="adLayout"][value="3"]').checked = true;
+                adInputsSection.classList.add('hidden'); // 広告情報セクションを非表示にする
+                editModal.style.display = 'flex';
+                modalErrorMessage.classList.add('hidden');
+            });
+            cancelEditButton.addEventListener('click', () => {
+                editModal.style.display = 'none';
+            });
+            applyEditButton.addEventListener('click', applyChanges);
+            
+            document.querySelectorAll('input[name="adLayout"]').forEach(radio => {
+                radio.addEventListener('change', () => {
+                    const selectedLayout = radio.value;
+                    const pageText = pageInput.value;
+                    const pageIndexesToEdit = parsePageNumbers(pageText);
+
+                    if (pageIndexesToEdit && pageIndexesToEdit.length === 1) {
+                         const pageData = daiwariData[pageIndexesToEdit[0]];
+                         updateAdInputs(selectedLayout, pageData.adInfo);
+                    } else {
+                        adInputsSection.classList.add('hidden');
+                    }
+                });
+            });
+
+            // Save and Load button listeners
+            saveButton.addEventListener('click', saveCurrentState);
+            loadButton.addEventListener('click', () => {
+                loadInput.click();
+            });
+            loadInput.addEventListener('change', (event) => {
+                const file = event.target.files[0];
+                if (file) {
+                    loadStateFromFile(file);
+                }
+            });
+        };
+
+        // Setting up event listeners for dynamically created elements
+        const setupDynamicEventListeners = () => {
+            daiwariContainer.addEventListener('input', (e) => {
+                const inputElement = e.target.closest('input.page-title-input');
+                if (inputElement) {
+                    const pageIndex = parseInt(inputElement.dataset.pageIndex, 10);
+                    if (daiwariData[pageIndex]) {
+                        daiwariData[pageIndex].title = inputElement.value;
+                        saveDaiwari();
+                    }
+                }
+            });
+
+            // Drag and Drop Event Listeners
+            daiwariContainer.addEventListener('dragstart', (e) => {
+                const pageWrapper = e.target.closest('.page-wrapper');
+                if (pageWrapper && pageWrapper.draggable) {
+                    draggedIndex = parseInt(pageWrapper.dataset.pageIndex, 10);
+                    e.dataTransfer.effectAllowed = 'move';
+                    setTimeout(() => {
+                        pageWrapper.classList.add('dragging');
+                    }, 0);
+                }
+            });
+
+            daiwariContainer.addEventListener('dragend', (e) => {
+                if (draggedIndex !== null) {
+                    const pageWrapper = document.querySelector(`.page-wrapper[data-page-index='${draggedIndex}']`);
+                    if (pageWrapper) {
+                        pageWrapper.classList.remove('dragging');
+                    }
+                }
+                draggedIndex = null;
+                document.querySelectorAll('.drag-over-indicator').forEach(el => el.classList.remove('drag-over-indicator'));
+            });
+
+            daiwariContainer.addEventListener('dragover', (e) => {
+                e.preventDefault();
+                const targetWrapper = e.target.closest('.page-wrapper');
+                // Allow dropping only on other draggable pages
+                if (targetWrapper && targetWrapper.draggable && draggedIndex !== null) {
+                    const targetIndex = parseInt(targetWrapper.dataset.pageIndex, 10);
+                    if (draggedIndex !== targetIndex) {
+                        document.querySelectorAll('.drag-over-indicator').forEach(el => el.classList.remove('drag-over-indicator'));
+                        targetWrapper.classList.add('drag-over-indicator');
+                    }
+                }
+            });
+
+            daiwariContainer.addEventListener('dragleave', (e) => {
+                const targetWrapper = e.target.closest('.page-wrapper');
+                if (targetWrapper) {
+                    targetWrapper.classList.remove('drag-over-indicator');
+                }
+            });
+
+            daiwariContainer.addEventListener('drop', (e) => {
+                e.preventDefault();
+                const dropWrapper = e.target.closest('.page-wrapper');
+                if (dropWrapper && dropWrapper.draggable && draggedIndex !== null) {
+                    const dropIndex = parseInt(dropWrapper.dataset.pageIndex, 10);
+                    dropWrapper.classList.remove('drag-over-indicator');
+
+                    if (draggedIndex !== dropIndex) {
+                        // Reorder the data array
+                        const [draggedItem] = daiwariData.splice(draggedIndex, 1);
+                        daiwariData.splice(dropIndex, 0, draggedItem);
+
+                        // Renumber all body pages based on their new index
+                        daiwariData.forEach((page, index) => {
+                            if (index >= 2 && index < daiwariData.length - 2) {
+                                page.page = index - 1;
+                            }
+                        });
+
+                        renderDaiwari();
+                        saveDaiwari();
+                        
+                        successMessage.textContent = 'ページの順番を更新しました。';
+                        successMessage.style.opacity = '1';
+                        setTimeout(() => {
+                            successMessage.style.opacity = '0';
+                        }, 3000);
+                    }
+                }
+            });
+        }
+        
+        window.onload = () => {
+            initializeFirebase();
+            setupStaticEventListeners();
+        };
+
+    </script>
+</body>
+</html>
